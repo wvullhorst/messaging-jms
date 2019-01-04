@@ -1,4 +1,5 @@
-# messaging-jms
+# messaging-jms (experimental)
+
 A simple library for
 * sending
 * receiving
