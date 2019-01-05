@@ -2,33 +2,28 @@ package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
 import com.vullhorst.messagebus.jms.execution.retryOnce
+import com.vullhorst.messagebus.jms.model.consumerName
 import mu.KotlinLogging
-import javax.jms.Destination
 import javax.jms.MessageConsumer
-import javax.jms.Session
 import javax.jms.Topic
 
 private val logger = KotlinLogging.logger {}
 
-fun withConsumer(session: Session,
-                 destination: Destination,
-                 messageHandlerName: String,
+fun withConsumer(context: DestinationContext,
                  body: (MessageConsumer) -> Try<Unit>): Try<Unit> =
-        createConsumer(session, destination, messageHandlerName)
+        createConsumer(context)
                 .flatMap { consumer ->
                     retryOnce {
                         body.invoke(consumer)
                     }
                 }
 
-private fun createConsumer(session: Session,
-                           destination: Destination,
-                           messageHandlerName: String): Try<MessageConsumer> {
+private fun createConsumer(context: DestinationContext): Try<MessageConsumer> {
     return Try {
-        logger.debug { "create new consumer for $destination" }
-        when (destination) {
-            is Topic -> session.createDurableSubscriber(destination, messageHandlerName)
-            else -> session.createConsumer(destination)
+        logger.debug { "create new consumer for ${context.channel}" }
+        when (context.destination) {
+            is Topic -> context.session.createDurableSubscriber(context.destination, context.channel.consumerName())
+            else -> context.session.createConsumer(context.destination)
         }
     }
 }

@@ -10,7 +10,7 @@ import javax.jms.TextMessage
 
 data class Event(
         val eventId: EventId,
-        val occuredOn: Date
+        val occurredOn: Date
 )
 
 fun Event.asText() = Try { Gson().toJson(this)!! }

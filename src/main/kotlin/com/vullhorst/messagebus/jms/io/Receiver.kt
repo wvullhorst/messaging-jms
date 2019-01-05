@@ -4,23 +4,18 @@ import arrow.core.Try
 import arrow.core.recoverWith
 import com.vullhorst.messagebus.jms.execution.retryOnFailure
 import mu.KotlinLogging
-import javax.jms.Destination
 import javax.jms.Message
-import javax.jms.Session
 
 private val logger = KotlinLogging.logger {}
 
-fun <T> handleTypedMessages(session: Session,
-                            destination: Destination,
+fun <T> withIncomingMessage(context: DestinationContext,
                             deserializer: (Message) -> Try<T>,
-                            messageHandlerName: String,
-                            shutdownSignal: () -> Boolean,
                             body: (T) -> Try<Unit>) =
         retryOnFailure {
-            withConsumer(session, destination, messageHandlerName) { consumer ->
+            withConsumer(context) { consumer ->
                 Try {
-                    while (!shutdownSignal.invoke()) {
-                        withMessage(consumer, shutdownSignal) { message ->
+                    while (!context.shutDownSignal.invoke()) {
+                        withMessage(consumer, context.shutDownSignal) { message ->
                             convertToT(message, deserializer)
                                     .flatMap { messageTPair ->
                                         body.invoke(messageTPair.second)
@@ -29,7 +24,7 @@ fun <T> handleTypedMessages(session: Session,
                                                     { throwable: Throwable ->
                                                         Try {
                                                             logger.warn { "error in message handling, recover" }
-                                                            session.recover()
+                                                            context.session.recover()
                                                             throw throwable
                                                         }
                                                     }.invoke(exception)

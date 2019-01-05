@@ -19,15 +19,16 @@ class SessionCache(
         private val retryTimerInSeconds: Int = 10) {
 
     private var session: Option<Session> = Option.empty()
+    private var shutDownSignal  = false
 
     private val logger = KotlinLogging.logger {}
 
     fun onSession(channel: Channel,
-                  body: (Session, Destination) -> Try<Unit>): Try<Unit> =
+                  body: (DestinationContext) -> Try<Unit>): Try<Unit> =
             Try {
                 retryForever(this.retryTimerInSeconds) {
                     session().flatMap { session ->
-                        invoke(session, channel, body)
+                        invoke(session, channel, { shutDownSignal }, body)
                                 .recoverWith {
                                     logger.debug("$this: error on session: ${it.message}, invalidate session")
                                     invalidate()
@@ -42,10 +43,11 @@ class SessionCache(
 
     private fun invoke(session: Session,
                        channel: Channel,
-                       body: (Session, Destination) -> Try<Unit>): Try<Unit> {
+                       shutDownSignal: () -> Boolean,
+                       body: (DestinationContext) -> Try<Unit>): Try<Unit> {
         return retryOnce {
             onDestination(session, channel) { destination ->
-                body.invoke(session, destination)
+                body.invoke(DestinationContext(session, destination, channel, shutDownSignal))
             }
         }
     }
@@ -82,16 +84,19 @@ class SessionCache(
                         it
                     }
 
-    fun invalidate(): Try<Unit> = Try {
+    private fun invalidate(): Try<Unit> = Try {
         logger.info { "invalidating session cache" }
         this.session = Option.empty()
     }
 
-    fun disconnect() {
+    fun shutDown() {
+        logger.warn("shutting down")
+        this.shutDownSignal = true
         session.map {
             logger.info("closing session $it")
             it.close()
         }
         invalidate()
     }
+
 }

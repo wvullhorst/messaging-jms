@@ -9,7 +9,7 @@ sealed class Channel {
     data class Queue(val id: String, val consumerId: String = "") : Channel()
 }
 
-fun Channel.consumerNmae() = when(this) {
+fun Channel.consumerName() = when(this) {
     is Channel.Topic -> this.consumerId
     is Channel.Queue -> this.consumerId
 }

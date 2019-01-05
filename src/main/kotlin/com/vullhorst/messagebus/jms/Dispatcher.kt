@@ -2,10 +2,9 @@ package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
 import com.vullhorst.messagebus.jms.io.SessionCache
-import com.vullhorst.messagebus.jms.io.handlePlainMessages
 import com.vullhorst.messagebus.jms.io.send
+import com.vullhorst.messagebus.jms.io.withIncomingMessage
 import com.vullhorst.messagebus.jms.model.Channel
-import com.vullhorst.messagebus.jms.model.consumerNmae
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -23,18 +22,13 @@ class Dispatcher(
     private val sessionCache = SessionCache(connectionBuilder)
     private val logger = KotlinLogging.logger {}
 
-    private var shutdownSignal = false
-
     fun startup() {
-        this.shutdownSignal = false
         GlobalScope.launch(CoroutineName("Dispatcher-rcv")) {
             logger.info { "startup" }
-            sessionCache.onSession(receiveChannel) { session, destination ->
-                handlePlainMessages(session,
-                        destination,
-                        receiveChannel.consumerNmae(),
-                        { shutdownSignal }) { incomingMessage ->
-                    send(incomingMessage)
+            sessionCache.onSession(receiveChannel) { ctx ->
+                withIncomingMessage(ctx,
+                        { Try.just(it) }) {
+                    send(it)
                 }
             }
         }
@@ -42,14 +36,16 @@ class Dispatcher(
 
     private fun send(incomingMessage: Message): Try<Unit> {
         logger.info { "send..." }
-        return sessionCache.onSession(sendChannel) { session, destination ->
-            messageBuilder.invoke(session, incomingMessage).flatMap { outgoingMessage ->
-                send(session, destination, outgoingMessage)
+        return sessionCache.onSession(sendChannel) { ctx ->
+            messageBuilder.invoke(ctx.session, incomingMessage).flatMap { outgoingMessage ->
+                send(ctx,
+                        { Try.just(it) },
+                        outgoingMessage)
             }
         }
     }
 
     fun shutdown() {
-        this.shutdownSignal = true
+        this.sessionCache.shutDown()
     }
 }
