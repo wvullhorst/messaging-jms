@@ -5,10 +5,8 @@ import com.vullhorst.messagebus.jms.io.SessionCache
 import com.vullhorst.messagebus.jms.io.send
 import com.vullhorst.messagebus.jms.io.withIncomingMessage
 import com.vullhorst.messagebus.jms.model.Channel
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import mu.KotlinLogging
+import java.util.concurrent.Executors
 import javax.jms.Connection
 import javax.jms.Message
 import javax.jms.Session
@@ -20,10 +18,12 @@ class Dispatcher(
         private val messageBuilder: (Session, Message) -> Try<Message>) {
 
     private val sessionCache = SessionCache(connectionBuilder)
+    private val receiver = Executors.newSingleThreadExecutor()
     private val logger = KotlinLogging.logger {}
 
     fun startup() {
-        GlobalScope.launch(CoroutineName("Dispatcher-rcv")) {
+        receiver.execute {
+            Thread.currentThread().name = "Dispatcher_rcv"
             logger.info { "startup" }
             sessionCache.onSession(receiveChannel) { ctx ->
                 withIncomingMessage(ctx,
@@ -31,6 +31,7 @@ class Dispatcher(
                     send(it)
                 }
             }
+
         }
     }
 
@@ -46,6 +47,11 @@ class Dispatcher(
     }
 
     fun shutdown() {
+        logger.warn("shutting down...")
         this.sessionCache.shutDown()
+        receiver.shutdown()
+        while (!receiver.isTerminated) { }
+        logger.warn("shutdown completed")
+
     }
 }

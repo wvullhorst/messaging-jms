@@ -33,7 +33,7 @@ class SessionCache(
     fun onSession(channel: Channel,
                   body: (DestinationContext) -> Try<Unit>): Try<Unit> =
             Try {
-                retryForever(this.retryTimerInSeconds) {
+                retryForever(this.shutDownSignal, this.retryTimerInSeconds) {
                     session().flatMap { session ->
                         invoke(session, channel, shutDownSignal, body)
                                 .recoverWith {
@@ -52,7 +52,7 @@ class SessionCache(
                        channel: Channel,
                        shutDownSignal: ShutDownSignal,
                        body: (DestinationContext) -> Try<Unit>): Try<Unit> {
-        return retryOnce {
+        return retryOnce(shutDownSignal) {
             onDestination(session, channel) { destination ->
                 body.invoke(DestinationContext(session, destination, channel, shutDownSignal))
             }
@@ -98,7 +98,7 @@ class SessionCache(
 
     fun shutDown() {
         logger.warn("shutting down")
-        this.shutDownSignal.set()
+        this.shutDownSignal.signal = true
         session.map {
             logger.info("closing session $it")
             it.session.close()

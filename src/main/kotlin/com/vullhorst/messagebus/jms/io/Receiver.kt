@@ -12,10 +12,10 @@ private val logger = KotlinLogging.logger {}
 fun <T> withIncomingMessage(context: DestinationContext,
                             deserializer: (Message) -> Try<T>,
                             body: (T) -> Try<Unit>) =
-        retry {
+        retry(context.shutDownSignal) {
             withConsumer(context) { consumer ->
                 Try {
-                    context.shutDownSignal.repeatUntilShutDown {
+                    while(!context.shutDownSignal.signal) {
                         withMessage(consumer, context.shutDownSignal) { message ->
                             convertToT(message, deserializer)
                                     .flatMap { messageTPair ->

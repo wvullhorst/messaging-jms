@@ -14,7 +14,7 @@ fun withConsumer(context: DestinationContext,
                  body: (MessageConsumer) -> Try<Unit>): Try<Unit> =
         createConsumer(context)
                 .flatMap { consumer ->
-                    retryOnce {
+                    retryOnce(context.shutDownSignal) {
                         body.invoke(consumer)
                     }
                 }

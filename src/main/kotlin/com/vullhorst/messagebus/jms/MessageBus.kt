@@ -10,7 +10,6 @@ import java.util.concurrent.Executors
 import javax.jms.Connection
 import javax.jms.Message
 import javax.jms.Session
-import kotlin.concurrent.thread
 
 class MessageBus<T>(
         connectionBuilder: () -> Connection,
@@ -48,9 +47,10 @@ class MessageBus<T>(
     }
 
     fun shutdown() {
-        logger.warn("shutting down")
+        logger.warn("shutting down...")
         sessionCache.shutDown()
         receivers.shutdown()
         while(!receivers.isTerminated) {}
+        logger.warn("shutdown completed")
     }
 }

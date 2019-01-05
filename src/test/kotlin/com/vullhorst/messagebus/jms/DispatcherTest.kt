@@ -45,7 +45,8 @@ class DispatcherTest {
     @Test
     fun dispatcherDispatchesSimpleMessage() {
         val done = CompletableFuture<String>()
-        dispatcher().startup()
+        val dispatcher = dispatcher()
+        dispatcher.startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
         val messageBus = MessageBus<String>(factory::createConnection,
@@ -69,12 +70,15 @@ class DispatcherTest {
         runAfterDelay(5, TimeUnit.SECONDS) {
             messageBus.send(senderTopic, "simple message")
             done.get()
+            dispatcher.shutdown()
+            messageBus.shutdown()
         }
     }
 
     @Test
     fun dispatcherDispatchesMultipleSimpleMessages() {
-        dispatcher().startup()
+        val dispatcher = dispatcher()
+        dispatcher.startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
         val messageBus = MessageBus<String>(factory::createConnection,
@@ -91,22 +95,26 @@ class DispatcherTest {
                         }
                     }
                 })
-        val latch = CountDownLatch(10)
+        val messageCount = 10
+        val latch = CountDownLatch(messageCount)
         messageBus.receive(receiverQueue) {
             latch.countDown()
             Try.just(Unit)
         }
         runAfterDelay(5, TimeUnit.SECONDS) {
-            (1..10).forEach {
+            (1..messageCount).forEach {
                 messageBus.send(senderTopic, "simple message $it")
             }
             latch.await()
+            dispatcher.shutdown()
+            messageBus.shutdown()
         }
     }
 
     @Test
     fun messagesWithHeaderAreDeliveredToSameConsumer() {
-        dispatcher().startup()
+        val dispatcher = dispatcher()
+        dispatcher.startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
         val messageBus = MessageBus<String>(factory::createConnection,
@@ -141,6 +149,8 @@ class DispatcherTest {
             latch.await()
             logger.debug("all events received, result=$messageToThreadSetMap")
             Assert.assertEquals(receiverCount, messageToThreadSetMap.size)
+            dispatcher.shutdown()
+            messageBus.shutdown()
         }
     }
 
