@@ -1,9 +1,9 @@
 package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
+import com.vullhorst.messagebus.jms.io.model.DestinationContext
 import mu.KotlinLogging
 import javax.jms.Message
-import javax.jms.MessageProducer
 
 private val logger = KotlinLogging.logger {}
 
@@ -12,12 +12,10 @@ fun <T> send(context: DestinationContext,
              anObject: T): Try<Unit> =
         serializer.invoke(anObject)
                 .flatMap { message ->
-                    send(context.session.createProducer(context.destination), message)
+                    withProducer(context) {
+                        Try {
+                            it.send(message)
+                            logger.debug { "message sent successfully" }
+                        }
+                    }
                 }
-
-private fun send(producer: MessageProducer,
-                 message: Message): Try<Unit> =
-        Try {
-            producer.send(message)
-            logger.debug { "message sent successfully" }
-        }

@@ -15,9 +15,9 @@ data class Event(
 
 fun Event.asText() = Try { Gson().toJson(this)!! }
 
-fun Event.serialize(session: Session): Try<Message> = this.asText().map(session::createTextMessage)
+fun Event.toMessage(session: Session): Try<Message> = this.asText().map(session::createTextMessage)
 
-fun Message.deserialize(): Try<Event> {
+fun Message.toEvent(): Try<Event> {
     return when (this) {
         is TextMessage -> Try { Gson().fromJson(this.text, Event::class.java) }
         else -> Try.raise(IllegalStateException("message is not of type textMessage"))

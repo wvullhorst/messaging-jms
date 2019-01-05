@@ -2,6 +2,7 @@ package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
 import com.vullhorst.messagebus.jms.execution.retryOnce
+import com.vullhorst.messagebus.jms.io.model.DestinationContext
 import com.vullhorst.messagebus.jms.model.consumerName
 import mu.KotlinLogging
 import javax.jms.MessageConsumer

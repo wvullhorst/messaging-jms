@@ -6,7 +6,9 @@ import arrow.core.getOrElse
 import arrow.core.recoverWith
 import com.vullhorst.messagebus.jms.execution.retryForever
 import com.vullhorst.messagebus.jms.execution.retryOnce
+import com.vullhorst.messagebus.jms.io.model.DestinationContext
 import com.vullhorst.messagebus.jms.model.Channel
+import com.vullhorst.messagebus.jms.model.ShutDownSignal
 import com.vullhorst.messagebus.jms.model.createDestination
 import mu.KotlinLogging
 import java.util.concurrent.locks.ReentrantLock
@@ -18,8 +20,13 @@ class SessionCache(
         private val connectionBuilder: () -> Connection,
         private val retryTimerInSeconds: Int = 10) {
 
-    private var session: Option<Session> = Option.empty()
-    private var shutDownSignal  = false
+    data class SessionContext(
+            val connection: Connection,
+            val session: Session
+    )
+
+    private var session: Option<SessionContext> = Option.empty()
+    private var shutDownSignal = ShutDownSignal()
 
     private val logger = KotlinLogging.logger {}
 
@@ -28,7 +35,7 @@ class SessionCache(
             Try {
                 retryForever(this.retryTimerInSeconds) {
                     session().flatMap { session ->
-                        invoke(session, channel, { shutDownSignal }, body)
+                        invoke(session, channel, shutDownSignal, body)
                                 .recoverWith {
                                     logger.debug("$this: error on session: ${it.message}, invalidate session")
                                     invalidate()
@@ -43,7 +50,7 @@ class SessionCache(
 
     private fun invoke(session: Session,
                        channel: Channel,
-                       shutDownSignal: () -> Boolean,
+                       shutDownSignal: ShutDownSignal,
                        body: (DestinationContext) -> Try<Unit>): Try<Unit> {
         return retryOnce {
             onDestination(session, channel) { destination ->
@@ -64,19 +71,19 @@ class SessionCache(
             sessionLock.lock()
             return session.map {
                 logger.debug("$this: using existing session")
-                Try.just(it)
-            }.getOrElse { build() }
+                Try.just(it.session)
+            }.getOrElse { build().map { it.session } }
         } finally {
             sessionLock.unlock()
         }
     }
 
-    private fun build(): Try<Session> =
+    private fun build(): Try<SessionContext> =
             Try {
                 logger.info("creating new connection and session")
                 val connection = connectionBuilder.invoke()
                 connection.start()
-                connection.createSession(false, Session.CLIENT_ACKNOWLEDGE)
+                SessionContext(connection, connection.createSession(false, Session.CLIENT_ACKNOWLEDGE))
             }
                     .map {
                         logger.debug("storing new session...")
@@ -91,10 +98,11 @@ class SessionCache(
 
     fun shutDown() {
         logger.warn("shutting down")
-        this.shutDownSignal = true
+        this.shutDownSignal.set()
         session.map {
             logger.info("closing session $it")
-            it.close()
+            it.session.close()
+            it.connection.close()
         }
         invalidate()
     }

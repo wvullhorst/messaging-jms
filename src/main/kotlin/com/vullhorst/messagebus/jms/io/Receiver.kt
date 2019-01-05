@@ -2,7 +2,8 @@ package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
 import arrow.core.recoverWith
-import com.vullhorst.messagebus.jms.execution.retryOnFailure
+import com.vullhorst.messagebus.jms.execution.retry
+import com.vullhorst.messagebus.jms.io.model.DestinationContext
 import mu.KotlinLogging
 import javax.jms.Message
 
@@ -11,10 +12,10 @@ private val logger = KotlinLogging.logger {}
 fun <T> withIncomingMessage(context: DestinationContext,
                             deserializer: (Message) -> Try<T>,
                             body: (T) -> Try<Unit>) =
-        retryOnFailure {
+        retry {
             withConsumer(context) { consumer ->
                 Try {
-                    while (!context.shutDownSignal.invoke()) {
+                    context.shutDownSignal.repeatUntilShutDown {
                         withMessage(consumer, context.shutDownSignal) { message ->
                             convertToT(message, deserializer)
                                     .flatMap { messageTPair ->

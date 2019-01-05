@@ -14,19 +14,16 @@ import java.util.concurrent.TimeUnit
 private val logger = KotlinLogging.logger {}
 
 class MessageBusTest {
-    companion object {
-        private val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
-        private val messageBus = messageBus()
-        private fun messageBus(): MessageBus<Event> {
-            logger.info("creating message bus")
-            factory.clientID = "testbus"
-            return MessageBus(factory::createConnection,
-                    { session, event -> event.serialize(session) },
-                    { message -> message.deserialize() })
-        }
-    }
-
     private val topic = Channel.Topic("testtopic", "topicconsumer")
+    private val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
+
+    private fun messageBus(): MessageBus<Event> {
+        logger.info("creating message bus")
+        factory.clientID = "testbus"
+        return MessageBus(factory::createConnection,
+                { session, event -> event.toMessage(session) },
+                { message -> message.toEvent() })
+    }
     private val queue = Channel.Queue("testqueue")
     private val simpleEvent = Event(EventId("event1"), Date())
 
@@ -34,6 +31,7 @@ class MessageBusTest {
     fun eventBusCanSendAndReceiveEventsViaTopic() {
         val nMessages = 10
         val latch = CountDownLatch(nMessages)
+        val messageBus = messageBus()
         messageBus.receive(topic) {
             latch.countDown()
             Try.just(Unit)
@@ -42,7 +40,8 @@ class MessageBusTest {
             for (i in 1..nMessages) {
                 messageBus.send(topic, simpleEvent)
             }
-            latch.await(10, TimeUnit.SECONDS)
+            latch.await()
+            messageBus.shutdown()
             logger.info("done")
         }
     }
@@ -51,6 +50,7 @@ class MessageBusTest {
     fun eventBusCanSendAndReceiveEventsViaQueue() {
         val nMessages = 10
         val latch = CountDownLatch(nMessages)
+        val messageBus = messageBus()
         messageBus.receive(queue) {
             println("message received")
             latch.countDown()
@@ -61,6 +61,7 @@ class MessageBusTest {
                 messageBus.send(queue, simpleEvent)
             }
             latch.await(20, TimeUnit.SECONDS)
+            messageBus.shutdown()
             logger.info("done")
         }
     }
@@ -70,6 +71,7 @@ class MessageBusTest {
         val done = CompletableFuture<Event>()
         val failure = CompletableFuture<Event>()
         var eventCount = 0
+        val messageBus = messageBus()
         messageBus.receive(topic) {
             if (eventCount == 0) {
                 println("received event, return failure")
@@ -86,9 +88,9 @@ class MessageBusTest {
             messageBus.send(topic, simpleEvent)
             val failedEvent = failure.get()
             val receivedEvent = done.get()
-            logger.info("done, failedEvent=$failedEvent")
+            logger.info("done, failedEvent  =$failedEvent")
             logger.info("done, receivedEvent=$receivedEvent")
+            messageBus.shutdown()
         }
     }
-
 }

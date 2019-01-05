@@ -15,17 +15,17 @@ fun retryForever(delayInSeconds: Int = 1,
 }
 
 fun retryOnce(body: () -> Try<Unit>): Try<Unit> =
-        retryOnFailure(1) { body() }
+        retry(1) { body() }
 
-fun retryOnFailure(numberOfRetries: Int = 2,
-                   delay: Long = 1,
-                   delayUnit: TimeUnit = TimeUnit.SECONDS,
-                   body: () -> Try<Unit>): Try<Unit> = body.invoke()
+fun retry(numberOfRetries: Int = 2,
+          delay: Long = 1,
+          delayUnit: TimeUnit = TimeUnit.SECONDS,
+          body: () -> Try<Unit>): Try<Unit> = body.invoke()
         .recoverWith {
             if (numberOfRetries > 0) {
                 logger.warn("error occurred: ${it.message}, retrying after $delay $delayUnit...")
                 invokeAfterDelay(delay, delayUnit) {
-                    retryOnFailure(numberOfRetries - 1,
+                    retry(numberOfRetries - 1,
                             delay,
                             delayUnit,
                             body)

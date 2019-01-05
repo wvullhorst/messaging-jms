@@ -6,6 +6,7 @@ import com.vullhorst.messagebus.jms.io.send
 import com.vullhorst.messagebus.jms.io.withIncomingMessage
 import com.vullhorst.messagebus.jms.model.Channel
 import mu.KotlinLogging
+import java.util.concurrent.Executors
 import javax.jms.Connection
 import javax.jms.Message
 import javax.jms.Session
@@ -19,6 +20,7 @@ class MessageBus<T>(
     private val logger = KotlinLogging.logger {}
 
     private val sessionCache = SessionCache(connectionBuilder)
+    private val receivers = Executors.newCachedThreadPool()
 
     fun send(channel: Channel, objectOfT: T): Try<Unit> {
         logger.debug("send $channel")
@@ -33,7 +35,8 @@ class MessageBus<T>(
                 numberOfConsumers: Int = 1,
                 consumer: (T) -> Try<Unit>) {
         (1..numberOfConsumers).forEach { consumerId ->
-            thread(name = "MessageBus-rcv_$consumerId") {
+            receivers.execute {
+                Thread.currentThread().name = "MessageBus_rcv-$consumerId"
                 logger.debug("$consumerId starting receiver for channel $channel -> ${Thread.currentThread()}")
                 sessionCache.onSession(channel) { context ->
                     withIncomingMessage(context,
@@ -47,5 +50,7 @@ class MessageBus<T>(
     fun shutdown() {
         logger.warn("shutting down")
         sessionCache.shutDown()
+        receivers.shutdown()
+        while(!receivers.isTerminated) {}
     }
 }
