@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import javax.jms.Message
+import javax.jms.Session
 import javax.jms.TextMessage
 
 class DispatcherTest {
@@ -24,18 +25,21 @@ class DispatcherTest {
     private fun dispatcher(): Dispatcher {
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "dispatcher"
-        return Dispatcher({ factory },
+        return Dispatcher(factory::createConnection,
                 dispatcherTopic,
-                dispatcherQueue,
-                { session, message ->
-                    Try {
-                        val messageText = (message as TextMessage).text
-                        val outgoingMessage = session.createTextMessage("$messageText - dispatched")
-                        logger.debug("groupId: $messageText")
-                        outgoingMessage.setStringProperty("JMSXGroupID", messageText)
-                        outgoingMessage
-                    }
-                })
+                dispatcherQueue) { session, message ->
+            createOutgoingMessage(message, session)
+        }
+    }
+
+    private fun createOutgoingMessage(message: Message, session: Session): Try<TextMessage> {
+        return Try {
+            val messageText = (message as TextMessage).text
+            val outgoingMessage = session.createTextMessage("$messageText - dispatched")
+            logger.debug("groupId: $messageText")
+            outgoingMessage.setStringProperty("JMSXGroupID", messageText)
+            outgoingMessage
+        }
     }
 
     @Test
@@ -44,7 +48,7 @@ class DispatcherTest {
         dispatcher().startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
-        val messageBus = MessageBus<String>({ factory },
+        val messageBus = MessageBus<String>(factory::createConnection,
                 { session, str ->
                     Try {
                         session.createTextMessage(str)
@@ -73,7 +77,7 @@ class DispatcherTest {
         dispatcher().startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
-        val messageBus = MessageBus<String>({ factory },
+        val messageBus = MessageBus<String>(factory::createConnection,
                 { session, str ->
                     Try {
                         session.createTextMessage(str)
@@ -105,7 +109,7 @@ class DispatcherTest {
         dispatcher().startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
-        val messageBus = MessageBus<String>({ factory },
+        val messageBus = MessageBus<String>(factory::createConnection,
                 { session, str ->
                     Try {
                         session.createTextMessage(str)

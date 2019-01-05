@@ -7,18 +7,19 @@ import com.vullhorst.messagebus.jms.io.send
 import com.vullhorst.messagebus.jms.model.Channel
 import com.vullhorst.messagebus.jms.model.consumerNmae
 import mu.KotlinLogging
-import org.apache.activemq.ActiveMQConnectionFactory
+import javax.jms.Connection
 import javax.jms.Message
 import javax.jms.Session
 import kotlin.concurrent.thread
 
 class MessageBus<T>(
-        connectionFactoryProvider: () -> ActiveMQConnectionFactory,
+        connectionBuilder: () -> Connection,
         private val serializer: (Session, T) -> Try<Message>,
         private val deserializer: (Message) -> Try<T>) {
 
-    private val sessionCache = SessionCache(connectionFactoryProvider)
     private val logger = KotlinLogging.logger {}
+
+    private val sessionCache = SessionCache(connectionBuilder)
 
     private var shutdownSignal = false
 

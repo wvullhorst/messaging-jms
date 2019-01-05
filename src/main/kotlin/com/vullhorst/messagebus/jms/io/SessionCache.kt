@@ -9,13 +9,13 @@ import com.vullhorst.messagebus.jms.execution.retryOnce
 import com.vullhorst.messagebus.jms.model.Channel
 import com.vullhorst.messagebus.jms.model.createDestination
 import mu.KotlinLogging
-import org.apache.activemq.ActiveMQConnectionFactory
 import java.util.concurrent.locks.ReentrantLock
+import javax.jms.Connection
 import javax.jms.Destination
 import javax.jms.Session
 
 class SessionCache(
-        private val connectionFactoryProvider: () -> ActiveMQConnectionFactory,
+        private val connectionBuilder: () -> Connection,
         private val retryTimerInSeconds: Int = 10) {
 
     private var session: Option<Session> = Option.empty()
@@ -72,9 +72,7 @@ class SessionCache(
     private fun build(): Try<Session> =
             Try {
                 logger.info("creating new connection and session")
-                val connection = connectionFactoryProvider
-                        .invoke()
-                        .createConnection()
+                val connection = connectionBuilder.invoke()
                 connection.start()
                 connection.createSession(false, Session.CLIENT_ACKNOWLEDGE)
             }

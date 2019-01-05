@@ -20,7 +20,7 @@ class MessageBusTest {
         private fun messageBus(): MessageBus<Event> {
             logger.info("creating message bus")
             factory.clientID = "testbus"
-            return MessageBus({ factory },
+            return MessageBus(factory::createConnection,
                     { session, event -> event.serialize(session) },
                     { message -> message.deserialize() })
         }

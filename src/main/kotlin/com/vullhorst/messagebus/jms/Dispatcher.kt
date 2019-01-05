@@ -10,18 +10,18 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import mu.KotlinLogging
-import org.apache.activemq.ActiveMQConnectionFactory
+import javax.jms.Connection
 import javax.jms.Message
 import javax.jms.Session
 
 class Dispatcher(
-        connectionFactoryProvider: () -> ActiveMQConnectionFactory,
+        connectionBuilder: () -> Connection,
         private val receiveChannel: Channel,
         private val sendChannel: Channel,
         private val messageBuilder: (Session, Message) -> Try<Message>) {
 
+    private val sessionCache = SessionCache(connectionBuilder)
     private val logger = KotlinLogging.logger {}
-    private val sessionCache = SessionCache(connectionFactoryProvider)
 
     private var shutdownSignal = false
 
@@ -49,7 +49,7 @@ class Dispatcher(
         }
     }
 
-    private fun shutdown() {
+    fun shutdown() {
         this.shutdownSignal = true
     }
 }
