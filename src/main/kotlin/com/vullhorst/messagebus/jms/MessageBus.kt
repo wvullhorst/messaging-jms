@@ -1,10 +1,17 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
-import com.vullhorst.messagebus.jms.io.SessionCache
+import arrow.core.recoverWith
+import com.vullhorst.messagebus.jms.execution.ShutdownSignal
+import com.vullhorst.messagebus.jms.execution.combineWith
+import com.vullhorst.messagebus.jms.execution.handleIncomingMessages
+import com.vullhorst.messagebus.jms.execution.loopUntilShutdown
+import com.vullhorst.messagebus.jms.io.getSession
+import com.vullhorst.messagebus.jms.io.invalidateSession
+import com.vullhorst.messagebus.jms.io.model.DestinationContext
 import com.vullhorst.messagebus.jms.io.send
-import com.vullhorst.messagebus.jms.io.withIncomingMessage
 import com.vullhorst.messagebus.jms.model.Channel
+import com.vullhorst.messagebus.jms.model.createDestination
 import mu.KotlinLogging
 import java.util.concurrent.Executors
 import javax.jms.Connection
@@ -12,22 +19,23 @@ import javax.jms.Message
 import javax.jms.Session
 
 class MessageBus<T>(
-        connectionBuilder: () -> Connection,
+        private val connectionBuilder: () -> Try<Connection>,
         private val serializer: (Session, T) -> Try<Message>,
         private val deserializer: (Message) -> Try<T>) {
 
     private val logger = KotlinLogging.logger {}
 
-    private val sessionCache = SessionCache(connectionBuilder)
     private val receivers = Executors.newCachedThreadPool()
 
     fun send(channel: Channel, objectOfT: T): Try<Unit> {
         logger.debug("send $channel")
-        return sessionCache.onSession(channel) { context ->
-            send(context,
-                    { obj -> this.serializer.invoke(context.session, obj) },
-                    objectOfT)
-        }
+        return getSession(connectionBuilder)
+                .combineWith { session -> session.createDestination(channel) }
+                .flatMap { Try { DestinationContext(it.first, it.second, channel) } }
+                .flatMap { context ->
+                    this.serializer.invoke(context.session, objectOfT)
+                            .flatMap { serialized -> send(context, serialized) }
+                }
     }
 
     fun receive(channel: Channel,
@@ -37,10 +45,14 @@ class MessageBus<T>(
             receivers.execute {
                 Thread.currentThread().name = "MessageBus_rcv-$consumerId"
                 logger.debug("$consumerId starting receiver for channel $channel -> ${Thread.currentThread()}")
-                sessionCache.onSession(channel) { context ->
-                    withIncomingMessage(context,
-                            deserializer,
-                            consumer)
+                loopUntilShutdown {
+                    getSession(connectionBuilder)
+                            .combineWith { session -> session.createDestination(channel) }
+                            .flatMap { Try { DestinationContext(it.first, it.second, channel) } }
+                            .flatMap { destinationContext ->
+                                handleIncomingMessages(destinationContext, deserializer, consumer)
+                            }
+                            .recoverWith { Try { invalidateSession() } }
                 }
             }
         }
@@ -48,9 +60,10 @@ class MessageBus<T>(
 
     fun shutdown() {
         logger.warn("shutting down...")
-        sessionCache.shutDown()
+        ShutdownSignal.set()
         receivers.shutdown()
-        while(!receivers.isTerminated) {}
+        while (!receivers.isTerminated) {
+        }
         logger.warn("shutdown completed")
     }
 }

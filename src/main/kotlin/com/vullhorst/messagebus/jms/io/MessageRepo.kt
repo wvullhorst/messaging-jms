@@ -1,25 +1,21 @@
 package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
-import com.vullhorst.messagebus.jms.model.ShutDownSignal
 import mu.KotlinLogging
 import javax.jms.Message
 import javax.jms.MessageConsumer
 
 private val logger = KotlinLogging.logger {}
 
-fun withMessage(consumer: MessageConsumer,
-                shutDownSignal: ShutDownSignal,
-                body: (Message) -> Try<Unit>): Try<Unit> {
+fun receiveMessage(consumer: MessageConsumer,
+                   stopSignal: () -> Boolean): Try<Message> {
     logger.debug("receiveLoop")
     return Try {
         var message: Message? = null
-        while(!shutDownSignal.signal && message == null) {
+        while (!stopSignal.invoke() && message == null) {
             message = consumer.receive(1000)
         }
         logger.info("-> $message")
         message!!
-    }.flatMap { message ->
-        body.invoke(message)
     }
 }

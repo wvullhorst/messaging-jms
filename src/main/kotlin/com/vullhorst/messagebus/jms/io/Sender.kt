@@ -7,15 +7,11 @@ import javax.jms.Message
 
 private val logger = KotlinLogging.logger {}
 
-fun <T> send(context: DestinationContext,
-             serializer: (T) -> Try<Message>,
-             anObject: T): Try<Unit> =
-        serializer.invoke(anObject)
-                .flatMap { message ->
-                    withProducer(context) {
-                        Try {
-                            it.send(message)
-                            logger.debug { "message sent successfully" }
-                        }
-                    }
-                }
+fun send(context: DestinationContext,
+         message: Message): Try<Unit> =
+        withProducer(context) {
+            Try {
+                it.send(message)
+                logger.debug { "message sent successfully" }
+            }
+        }

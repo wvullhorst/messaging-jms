@@ -20,7 +20,7 @@ class MessageBusTest {
     private fun messageBus(): MessageBus<Event> {
         logger.info("creating message bus")
         factory.clientID = "testbus"
-        return MessageBus(factory::createConnection,
+        return MessageBus({ Try { factory.createConnection() } },
                 { session, event -> event.toMessage(session) },
                 { message -> message.toEvent() })
     }

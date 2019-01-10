@@ -2,39 +2,42 @@ package com.vullhorst.messagebus.jms.execution
 
 import arrow.core.Try
 import arrow.core.recoverWith
-import com.vullhorst.messagebus.jms.model.ShutDownSignal
 import mu.KotlinLogging
 import java.util.concurrent.TimeUnit
 
 private val logger = KotlinLogging.logger {}
 
-fun retryForever(shutDownSignal: ShutDownSignal,
-                 delayInSeconds: Int = 1,
+class ExecutorException(message:String):Exception (message)
+
+fun retryForever(delayInSeconds: Int = 1,
+                 shutDownSignal: () -> Boolean,
                  body: () -> Try<Unit>) {
-    while(!shutDownSignal.signal && body.invoke().isFailure()) {
+    while (!shutDownSignal.invoke() && !body.invoke().isFailure()) {
         Thread.sleep(delayInSeconds * 1000L)
     }
 }
 
-fun retryOnce(shutDownSignal: ShutDownSignal,
-              body: () -> Try<Unit>): Try<Unit> =
-        retry(shutDownSignal, 1) { body() }
+/*
+fun retryOnce(body: () -> Try<Unit>): Try<Unit> =
+        retry(1) { body() }
+*/
 
-fun retry(shutDownSignal: ShutDownSignal,
-          numberOfRetries: Int = 2,
+fun retry(numberOfRetries: Int = 2,
           delay: Long = 1,
           delayUnit: TimeUnit = TimeUnit.SECONDS,
+          shutDownSignal: () -> Boolean,
           body: () -> Try<Unit>): Try<Unit> {
-    if(!shutDownSignal.signal) {
+
+    if (!shutDownSignal.invoke()) {
         return body.invoke()
                 .recoverWith {
                     if (numberOfRetries > 0) {
                         logger.warn("error occurred: ${it.message}, retrying after $delay $delayUnit...")
                         invokeAfterDelay(delay, delayUnit) {
-                            retry(shutDownSignal,
-                                    numberOfRetries - 1,
+                            retry(numberOfRetries - 1,
                                     delay,
                                     delayUnit,
+                                    shutDownSignal,
                                     body)
                         }
                     } else {
@@ -43,9 +46,7 @@ fun retry(shutDownSignal: ShutDownSignal,
                     }
                 }
     }
-    else {
-        return Try.just(Unit)
-    }
+    else return Try.raise(ExecutorException("Shutdown in progress"))
 }
 
 private fun invokeAfterDelay(delay: Long, unit: TimeUnit, body: () -> Try<Unit>): Try<Unit> {
@@ -56,4 +57,12 @@ private fun invokeAfterDelay(delay: Long, unit: TimeUnit, body: () -> Try<Unit>)
 fun runAfterDelay(delay: Long, unit: TimeUnit, body: () -> Unit) {
     unit.sleep(delay)
     return body.invoke()
+}
+
+fun <T, B> Try<T>.andThen(body: (T) -> Try<B>): Try<B> = this.flatMap(body)
+
+fun <T, B> Try<T>.combineWith(body: (T) -> Try<B>): Try<Pair<T, B>> {
+    return this.fold(
+            { Try.raise(it) },
+            { t -> body.invoke(t).map { b -> Pair(t, b) } })
 }

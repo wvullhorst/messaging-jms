@@ -25,7 +25,7 @@ class DispatcherTest {
     private fun dispatcher(): Dispatcher {
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "dispatcher"
-        return Dispatcher(factory::createConnection,
+        return Dispatcher({ Try { factory.createConnection() } },
                 dispatcherTopic,
                 dispatcherQueue) { session, message ->
             createOutgoingMessage(message, session)
@@ -49,7 +49,7 @@ class DispatcherTest {
         dispatcher.startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
-        val messageBus = MessageBus<String>(factory::createConnection,
+        val messageBus = MessageBus<String>({ Try { factory.createConnection() } },
                 { session, str ->
                     Try {
                         session.createTextMessage(str)
@@ -81,7 +81,7 @@ class DispatcherTest {
         dispatcher.startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
-        val messageBus = MessageBus<String>(factory::createConnection,
+        val messageBus = MessageBus<String>({ Try { factory.createConnection() } },
                 { session, str ->
                     Try {
                         session.createTextMessage(str)
@@ -117,7 +117,7 @@ class DispatcherTest {
         dispatcher.startup()
         val factory = ActiveMQConnectionFactory("tcp://syn1:61616")
         factory.clientID = "messagebus"
-        val messageBus = MessageBus<String>(factory::createConnection,
+        val messageBus = MessageBus<String>({ Try { factory.createConnection() } },
                 { session, str ->
                     Try {
                         session.createTextMessage(str)

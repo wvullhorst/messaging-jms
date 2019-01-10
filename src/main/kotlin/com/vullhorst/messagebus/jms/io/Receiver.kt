@@ -9,32 +9,35 @@ import javax.jms.Message
 
 private val logger = KotlinLogging.logger {}
 
-fun <T> withIncomingMessage(context: DestinationContext,
-                            deserializer: (Message) -> Try<T>,
-                            body: (T) -> Try<Unit>) =
-        retry(context.shutDownSignal) {
-            withConsumer(context) { consumer ->
-                Try {
-                    while(!context.shutDownSignal.signal) {
-                        withMessage(consumer, context.shutDownSignal) { message ->
-                            convertToT(message, deserializer)
-                                    .flatMap { messageTPair ->
-                                        body.invoke(messageTPair.second)
-                                                .map { messageTPair.first.acknowledge() }
-                                                .recoverWith { exception ->
-                                                    { throwable: Throwable ->
-                                                        Try {
-                                                            logger.warn { "error in message handling, recover" }
-                                                            context.session.recover()
-                                                            throw throwable
-                                                        }
-                                                    }.invoke(exception)
-                                                }
-                                    }
+fun <T> handleIncomingMessages(context: DestinationContext,
+                               deserializer: (Message) -> Try<T>,
+                               stopSignal: () -> Boolean,
+                               body: (T) -> Try<Unit>) =
+        retry {
+            createConsumer(context)
+                    .flatMap { consumer ->
+                        Try {
+                            while (!stopSignal.invoke()) {
+                                receiveMessage(consumer, stopSignal)
+                                        .flatMap {
+                                            convertToT(it, deserializer)
+                                                    .flatMap { messageTPair ->
+                                                        body.invoke(messageTPair.second)
+                                                                .map { messageTPair.first.acknowledge() }
+                                                                .recoverWith { exception ->
+                                                                    { throwable: Throwable ->
+                                                                        Try {
+                                                                            logger.warn { "error in message handling, recover" }
+                                                                            context.session.recover()
+                                                                            throw throwable
+                                                                        }
+                                                                    }.invoke(exception)
+                                                                }
+                                                    }
+                                        }
+                            }
                         }
                     }
-                }
-            }
         }
 
 private fun <T> convertToT(msg: Message,
