@@ -9,7 +9,6 @@ private val logger = KotlinLogging.logger {}
 
 fun receiveMessage(consumer: MessageConsumer,
                    shutDownSignal: () -> Boolean): Try<Message> {
-    logger.debug("receiveLoop")
     return Try {
         var message: Message? = null
         while (!shutDownSignal.invoke() && message == null) {

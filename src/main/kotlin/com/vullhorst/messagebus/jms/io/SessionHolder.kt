@@ -10,44 +10,43 @@ import javax.jms.Session
 
 private val logger = KotlinLogging.logger {}
 
-private data class SessionContext(
+data class SessionContext(
         val connection: Connection,
         val session: Session
 )
 
-private object SessionHolder {
-    var sessionContext: Option<SessionContext> = Option.empty()
-}
+data class SessionHolder(
+        var sessionContext: Option<SessionContext> = Option.empty()
+)
 
-fun getSession(connectionBuilder: () -> Try<Connection>): Try<Session> =
-        getOrCreateSession(connectionBuilder,
-                { SessionHolder.sessionContext },
-                { SessionHolder.sessionContext = it })
+fun getSession(sessionHolder: SessionHolder,
+               connectionBuilder: () -> Try<Connection>): Try<Session> =
+        getOrCreateSession(sessionHolder,
+                connectionBuilder)
 
-fun invalidateSession() {
+fun invalidateSession(sessionHolder: SessionHolder) {
     logger.info { "invalidating session cache" }
-    SessionHolder.sessionContext.exists {
+    sessionHolder.sessionContext.exists {
         logger.info("closing session and connection")
         it.session.close()
         it.connection.close()
         true
     }
-    SessionHolder.sessionContext = Option.empty()
+    sessionHolder.sessionContext = Option.empty()
 }
 
 
 private val sessionLock = ReentrantLock()
-private fun getOrCreateSession(connectionBuilder: () -> Try<Connection>,
-                               contextGetter: () -> Option<SessionContext>,
-                               contextSetter: (Option<SessionContext>) -> Unit): Try<Session> {
+private fun getOrCreateSession(sessionHolder: SessionHolder,
+                               connectionBuilder: () -> Try<Connection>): Try<Session> {
     try {
         sessionLock.lock()
-        return contextGetter.invoke().map {
+        return sessionHolder.sessionContext.map {
             logger.debug("using existing session")
             Try.just(it.session)
         }.getOrElse {
-            contextSetter.invoke(buildSessionContext(connectionBuilder).toOption())
-            contextGetter.invoke()
+            sessionHolder.sessionContext = buildSessionContext(connectionBuilder).toOption();
+            sessionHolder.sessionContext
                     .map { Try.just(it.session) }
                     .getOrElse { Try.raise(IllegalStateException("could not create session")) }
         }

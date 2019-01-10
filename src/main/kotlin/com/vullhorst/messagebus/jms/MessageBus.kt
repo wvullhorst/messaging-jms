@@ -1,6 +1,7 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
+import com.vullhorst.messagebus.jms.io.SessionHolder
 import com.vullhorst.messagebus.jms.io.receive
 import com.vullhorst.messagebus.jms.io.send
 import com.vullhorst.messagebus.jms.model.Channel
@@ -19,11 +20,13 @@ class MessageBus<T>(
 
     private val receivers = Executors.newCachedThreadPool()
     private var shutDownSignal: Boolean = false
+    private val sessionHolder = SessionHolder()
 
     fun send(channel: Channel, objectOfT: T): Try<Unit> {
         logger.debug("send $channel")
         return send(channel,
                 objectOfT,
+                sessionHolder,
                 connectionBuilder,
                 serializer)
     }
@@ -33,6 +36,7 @@ class MessageBus<T>(
                 consumer: (T) -> Try<Unit>) {
         receive(channel,
                 numberOfConsumers,
+                sessionHolder,
                 connectionBuilder,
                 { receivers.execute(it) },
                 deserializer,

@@ -19,6 +19,7 @@ private val logger = KotlinLogging.logger {}
 
 fun <T> receive(channel: Channel,
                 numberOfConsumers: Int = 1,
+                sessionHolder: SessionHolder,
                 connectionBuilder: () -> Try<Connection>,
                 executor: (() -> Unit) -> Unit,
                 deserializer: (Message) -> Try<T>,
@@ -29,14 +30,13 @@ fun <T> receive(channel: Channel,
             Thread.currentThread().name = "MessageBus_rcv-$consumerId"
             logger.debug("$consumerId starting receiver for channel $channel -> ${Thread.currentThread()}")
             loopUntilShutdown(shutDownSignal) {
-                logger.debug { "loop until shutdown..." }
-                getSession(connectionBuilder)
+                getSession(sessionHolder, connectionBuilder)
                         .combineWith { session -> session.createDestination(channel) }
                         .andThen { buildDestinationContext(it, channel) }
                         .andThen { destinationContext ->
                             handleIncomingMessages(destinationContext, deserializer, shutDownSignal, consumer)
                         }
-                        .recoverWith { Try { invalidateSession() } }
+                        .recoverWith { Try { invalidateSession(sessionHolder) } }
             }
         }
     }
@@ -49,11 +49,9 @@ private fun <T> handleIncomingMessages(context: DestinationContext,
                                        shutDownSignal: () -> Boolean,
                                        body: (T) -> Try<Unit>): Try<Unit> =
         retryForever(shutDownSignal = shutDownSignal) {
-            logger.debug("retry forever...")
             createConsumer(context)
                     .andThen { consumer ->
                         loopUntilShutdown(shutDownSignal) {
-                            logger.debug("inner loop until shutdown")
                             receiveMessage(consumer, shutDownSignal)
                                     .andThen {
                                         convertToT(it, deserializer)

@@ -13,11 +13,12 @@ import javax.jms.Session
 private val logger = KotlinLogging.logger {}
 
 fun <T> send(channel: Channel,
-         objectOfT: T,
-         connectionBuilder: () -> Try<Connection>,
-         serializer: (Session, T) -> Try<Message>): Try<Unit> {
+             objectOfT: T,
+             sessionHolder: SessionHolder,
+             connectionBuilder: () -> Try<Connection>,
+             serializer: (Session, T) -> Try<Message>): Try<Unit> {
     logger.debug("send $channel")
-    return getSession(connectionBuilder)
+    return getSession(sessionHolder,connectionBuilder)
             .combineWith { session -> session.createDestination(channel) }
             .flatMap { Try { DestinationContext(it.first, it.second, channel) } }
             .flatMap { context ->

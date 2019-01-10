@@ -1,6 +1,7 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
+import com.vullhorst.messagebus.jms.io.SessionHolder
 import com.vullhorst.messagebus.jms.io.receive
 import com.vullhorst.messagebus.jms.io.send
 import com.vullhorst.messagebus.jms.model.Channel
@@ -20,6 +21,7 @@ class Dispatcher(
 
     private val receiver = Executors.newSingleThreadExecutor()
     private var shutDownSignal: Boolean = false
+    private val sessionHolder = SessionHolder()
 
     fun startup() {
         receiver.execute {
@@ -27,6 +29,7 @@ class Dispatcher(
             logger.info { "startup" }
             receive(receiveChannel,
                     1,
+                    sessionHolder,
                     connectionBuilder,
                     { receiver.execute(it) },
                     { msg -> Try { msg } },
@@ -39,6 +42,7 @@ class Dispatcher(
         logger.info { "send..." }
         return send(sendChannel,
                 incomingMessage,
+                sessionHolder,
                 connectionBuilder,
                 messageBuilder)
     }
