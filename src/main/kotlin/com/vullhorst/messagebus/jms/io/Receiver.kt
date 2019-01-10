@@ -2,40 +2,75 @@ package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
 import arrow.core.recoverWith
-import com.vullhorst.messagebus.jms.execution.retry
+import com.vullhorst.messagebus.jms.execution.andThen
+import com.vullhorst.messagebus.jms.execution.combineWith
+import com.vullhorst.messagebus.jms.execution.loopUntilShutdown
+import com.vullhorst.messagebus.jms.execution.retryForever
 import com.vullhorst.messagebus.jms.io.model.DestinationContext
+import com.vullhorst.messagebus.jms.model.Channel
+import com.vullhorst.messagebus.jms.model.createDestination
 import mu.KotlinLogging
+import javax.jms.Connection
+import javax.jms.Destination
 import javax.jms.Message
+import javax.jms.Session
 
 private val logger = KotlinLogging.logger {}
 
-fun <T> handleIncomingMessages(context: DestinationContext,
-                               deserializer: (Message) -> Try<T>,
-                               stopSignal: () -> Boolean,
-                               body: (T) -> Try<Unit>) =
-        retry {
+fun <T> receive(channel: Channel,
+                numberOfConsumers: Int = 1,
+                connectionBuilder: () -> Try<Connection>,
+                executor: (() -> Unit) -> Unit,
+                deserializer: (Message) -> Try<T>,
+                shutDownSignal: () -> Boolean,
+                consumer: (T) -> Try<Unit>) {
+    (1..numberOfConsumers).forEach { consumerId ->
+        executor.invoke {
+            Thread.currentThread().name = "MessageBus_rcv-$consumerId"
+            logger.debug("$consumerId starting receiver for channel $channel -> ${Thread.currentThread()}")
+            loopUntilShutdown(shutDownSignal) {
+                logger.debug { "loop until shutdown..." }
+                getSession(connectionBuilder)
+                        .combineWith { session -> session.createDestination(channel) }
+                        .andThen { buildDestinationContext(it, channel) }
+                        .andThen { destinationContext ->
+                            handleIncomingMessages(destinationContext, deserializer, shutDownSignal, consumer)
+                        }
+                        .recoverWith { Try { invalidateSession() } }
+            }
+        }
+    }
+}
+
+private fun buildDestinationContext(it: Pair<Session, Destination>, channel: Channel) = Try { DestinationContext(it.first, it.second, channel) }
+
+private fun <T> handleIncomingMessages(context: DestinationContext,
+                                       deserializer: (Message) -> Try<T>,
+                                       shutDownSignal: () -> Boolean,
+                                       body: (T) -> Try<Unit>): Try<Unit> =
+        retryForever(shutDownSignal = shutDownSignal) {
+            logger.debug("retry forever...")
             createConsumer(context)
-                    .flatMap { consumer ->
-                        Try {
-                            while (!stopSignal.invoke()) {
-                                receiveMessage(consumer, stopSignal)
-                                        .flatMap {
-                                            convertToT(it, deserializer)
-                                                    .flatMap { messageTPair ->
-                                                        body.invoke(messageTPair.second)
-                                                                .map { messageTPair.first.acknowledge() }
-                                                                .recoverWith { exception ->
-                                                                    { throwable: Throwable ->
-                                                                        Try {
-                                                                            logger.warn { "error in message handling, recover" }
-                                                                            context.session.recover()
-                                                                            throw throwable
-                                                                        }
-                                                                    }.invoke(exception)
-                                                                }
-                                                    }
-                                        }
-                            }
+                    .andThen { consumer ->
+                        loopUntilShutdown(shutDownSignal) {
+                            logger.debug("inner loop until shutdown")
+                            receiveMessage(consumer, shutDownSignal)
+                                    .andThen {
+                                        convertToT(it, deserializer)
+                                                .andThen { messageTPair ->
+                                                    body.invoke(messageTPair.second)
+                                                            .map { messageTPair.first.acknowledge() }
+                                                            .recoverWith { exception ->
+                                                                { throwable: Throwable ->
+                                                                    Try {
+                                                                        logger.warn { "error in message handling, recover" }
+                                                                        context.session.recover()
+                                                                        throw throwable
+                                                                    }
+                                                                }.invoke(exception)
+                                                            }
+                                                }
+                                    }
                         }
                     }
         }

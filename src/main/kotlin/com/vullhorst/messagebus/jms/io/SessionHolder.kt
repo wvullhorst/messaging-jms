@@ -8,11 +8,6 @@ import java.util.concurrent.locks.ReentrantLock
 import javax.jms.Connection
 import javax.jms.Session
 
-fun getSession(connectionBuilder: () -> Try<Connection>): Try<Session> =
-        getOrCreateSession(connectionBuilder,
-                { SessionHolder.sessionContext },
-                { SessionHolder.sessionContext = it })
-
 private val logger = KotlinLogging.logger {}
 
 private data class SessionContext(
@@ -23,6 +18,23 @@ private data class SessionContext(
 private object SessionHolder {
     var sessionContext: Option<SessionContext> = Option.empty()
 }
+
+fun getSession(connectionBuilder: () -> Try<Connection>): Try<Session> =
+        getOrCreateSession(connectionBuilder,
+                { SessionHolder.sessionContext },
+                { SessionHolder.sessionContext = it })
+
+fun invalidateSession() {
+    logger.info { "invalidating session cache" }
+    SessionHolder.sessionContext.exists {
+        logger.info("closing session and connection")
+        it.session.close()
+        it.connection.close()
+        true
+    }
+    SessionHolder.sessionContext = Option.empty()
+}
+
 
 private val sessionLock = ReentrantLock()
 private fun getOrCreateSession(connectionBuilder: () -> Try<Connection>,
@@ -52,9 +64,4 @@ private fun buildSessionContext(connectionBuilder: () -> Try<Connection>): Try<S
                 connection,
                 connection.createSession(false, Session.CLIENT_ACKNOWLEDGE))
     }
-}
-
-fun invalidateSession(): () -> Unit = {
-    logger.info { "invalidating session cache" }
-    SessionHolder.sessionContext = Option.empty()
 }

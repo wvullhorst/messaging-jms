@@ -70,8 +70,8 @@ class DispatcherTest {
         runAfterDelay(5, TimeUnit.SECONDS) {
             messageBus.send(senderTopic, "simple message")
             done.get()
-            dispatcher.shutdown()
             messageBus.shutdown()
+            dispatcher.shutdown()
         }
     }
 

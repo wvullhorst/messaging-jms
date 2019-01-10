@@ -8,11 +8,11 @@ import javax.jms.MessageConsumer
 private val logger = KotlinLogging.logger {}
 
 fun receiveMessage(consumer: MessageConsumer,
-                   stopSignal: () -> Boolean): Try<Message> {
+                   shutDownSignal: () -> Boolean): Try<Message> {
     logger.debug("receiveLoop")
     return Try {
         var message: Message? = null
-        while (!stopSignal.invoke() && message == null) {
+        while (!shutDownSignal.invoke() && message == null) {
             message = consumer.receive(1000)
         }
         logger.info("-> $message")
