@@ -1,9 +1,8 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
-import com.vullhorst.messagebus.jms.io.SessionHolder
-import com.vullhorst.messagebus.jms.io.receive
-import com.vullhorst.messagebus.jms.io.send
+import com.vullhorst.messagebus.jms.execution.execute
+import com.vullhorst.messagebus.jms.io.*
 import com.vullhorst.messagebus.jms.model.Channel
 import mu.KotlinLogging
 import java.util.concurrent.Executors
@@ -26,8 +25,7 @@ class MessageBus<T>(
         logger.debug("send $channel")
         return send(channel,
                 objectOfT,
-                sessionHolder,
-                connectionBuilder,
+                { getSession(sessionHolder, connectionBuilder) },
                 serializer)
     }
 
@@ -35,13 +33,12 @@ class MessageBus<T>(
                 numberOfConsumers: Int = 1,
                 consumer: (T) -> Try<Unit>) {
         receive(channel,
-                numberOfConsumers,
-                sessionHolder,
-                connectionBuilder,
-                { receivers.execute(it) },
                 deserializer,
-                { shutDownSignal },
-                consumer)
+                consumer,
+                { getSession(sessionHolder, connectionBuilder) },
+                { invalidateSession(sessionHolder) },
+                { receivers.execute(numberOfConsumers, { id -> "MessageBus_rcv$id" }, it) },
+                { shutDownSignal })
     }
 
     fun shutdown() {

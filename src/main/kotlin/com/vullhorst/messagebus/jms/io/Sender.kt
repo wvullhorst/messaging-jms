@@ -16,11 +16,10 @@ private val logger = KotlinLogging.logger {}
 
 fun <T> send(channel: Channel,
              objectOfT: T,
-             sessionHolder: SessionHolder,
-             connectionBuilder: () -> Try<Connection>,
+             sessionProvider: () -> Try<Session>,
              serializer: (Session, T) -> Try<Message>): Try<Unit> {
     logger.debug("send $channel")
-    return buildDestinationContext(channel, sessionHolder, connectionBuilder)
+    return buildDestinationContext(channel, sessionProvider)
             .combineWith { serializer.invoke(it.session, objectOfT) }
             .andThen { send(it.first, it.second) }
 }

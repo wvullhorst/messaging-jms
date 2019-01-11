@@ -24,7 +24,7 @@ fun getSession(sessionHolder: SessionHolder,
         getOrCreateSession(sessionHolder,
                 connectionBuilder)
 
-fun invalidateSession(sessionHolder: SessionHolder) {
+fun invalidateSession(sessionHolder: SessionHolder) = Try {
     logger.info { "invalidating session cache" }
     sessionHolder.sessionContext.exists {
         logger.info("closing session and connection")
@@ -35,7 +35,6 @@ fun invalidateSession(sessionHolder: SessionHolder) {
     sessionHolder.sessionContext = Option.empty()
 }
 
-
 private val sessionLock = ReentrantLock()
 private fun getOrCreateSession(sessionHolder: SessionHolder,
                                connectionBuilder: () -> Try<Connection>): Try<Session> {
@@ -45,7 +44,7 @@ private fun getOrCreateSession(sessionHolder: SessionHolder,
             logger.debug("using existing session")
             Try.just(it.session)
         }.getOrElse {
-            sessionHolder.sessionContext = buildSessionContext(connectionBuilder).toOption();
+            sessionHolder.sessionContext = buildSessionContext(connectionBuilder).toOption()
             sessionHolder.sessionContext
                     .map { Try.just(it.session) }
                     .getOrElse { Try.raise(IllegalStateException("could not create session")) }

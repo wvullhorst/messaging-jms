@@ -11,33 +11,28 @@ import com.vullhorst.messagebus.jms.io.model.buildDestinationContext
 import com.vullhorst.messagebus.jms.model.Channel
 import com.vullhorst.messagebus.jms.model.consumerName
 import mu.KotlinLogging
-import javax.jms.Connection
-import javax.jms.Message
-import javax.jms.MessageConsumer
-import javax.jms.Topic
+import javax.jms.*
 
 private val logger = KotlinLogging.logger {}
 
 fun <T> receive(channel: Channel,
-                numberOfConsumers: Int = 1,
-                sessionHolder: SessionHolder,
-                connectionBuilder: () -> Try<Connection>,
-                executor: (() -> Unit) -> Unit,
                 deserializer: (Message) -> Try<T>,
-                shutDownSignal: () -> Boolean,
-                consumer: (T) -> Try<Unit>) {
-    (1..numberOfConsumers).forEach { consumerId ->
+                consumer: (T) -> Try<Unit>,
+                sessionProvider: () -> Try<Session>,
+                sessionInvalidator: () -> Try<Unit>,
+                executor: (() -> Unit) -> Unit,
+                shutDownSignal: () -> Boolean) =
         executor.invoke {
-            Thread.currentThread().name = "MessageBus_rcv-$consumerId"
-            logger.debug("$consumerId starting receiver for channel $channel -> ${Thread.currentThread()}")
+            logger.debug("starting receiver for channel $channel -> ${Thread.currentThread()}")
             loopUntilShutdown(shutDownSignal) {
-                buildDestinationContext(channel, sessionHolder, connectionBuilder)
-                        .andThen { handleIncomingMessages(it, deserializer, shutDownSignal, consumer) }
-                        .recoverWith { Try { invalidateSession(sessionHolder) } }
+                sessionProvider.invoke()
+                        .andThen { buildDestinationContext(channel, sessionProvider) }
+                        .andThen { context ->
+                            handleIncomingMessages(context, deserializer, shutDownSignal, consumer)
+                                    .recoverWith { sessionInvalidator.invoke() }
+                        }
             }
         }
-    }
-}
 
 private fun <T> handleIncomingMessages(context: DestinationContext,
                                        deserializer: (Message) -> Try<T>,

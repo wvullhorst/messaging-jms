@@ -16,9 +16,8 @@ data class DestinationContext(val session: Session,
                               val channel: Channel)
 
 fun buildDestinationContext(channel: Channel,
-                            sessionHolder: SessionHolder,
-                            connectionBuilder: () -> Try<Connection>) =
-        getSession(sessionHolder, connectionBuilder)
+                            sessionProvider: () -> Try<Session>) =
+        sessionProvider.invoke()
                 .combineWith { session -> session.createDestination(channel) }
                 .andThen { buildDestinationContext(it, channel) }
 
