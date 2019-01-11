@@ -1,11 +1,7 @@
 package com.vullhorst.messagebus.jms.execution
 
 import arrow.core.Try
-import mu.KotlinLogging
 import java.util.concurrent.TimeUnit
-
-private val logger = KotlinLogging.logger {}
-
 
 class ExecutorException(message: String) : Exception(message)
     val shutdownInProgressTry = Try.raise<Unit>(ExecutorException("shutdown in progress"))
