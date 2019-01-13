@@ -2,7 +2,6 @@ package com.vullhorst.messagebus.jms.model
 
 import arrow.core.Try
 import javax.jms.Destination
-import javax.jms.Queue
 import javax.jms.Session
 
 sealed class Channel {
@@ -15,11 +14,12 @@ fun Channel.consumerName() = when(this) {
     is Channel.Queue -> this.consumerId
 }
 
-fun Session.createDestination(channel: Channel): Try<Destination> {
+fun createDestination(session: Session,
+                      channel: Channel): Try<Destination> {
     return Try {
         when (channel) {
-            is Channel.Topic -> this.createTopic(channel.id)
-            is Channel.Queue -> this.createQueue(channel.id)
+            is Channel.Topic -> session.createTopic(channel.id)
+            is Channel.Queue -> session.createQueue(channel.id)
         }
     }
 }

@@ -1,7 +1,7 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
-import com.vullhorst.messagebus.jms.execution.runAfterDelay
+import com.vullhorst.messagebus.jms.execution.afterDelay
 import com.vullhorst.messagebus.jms.io.*
 import com.vullhorst.messagebus.jms.model.Channel
 import mu.KotlinLogging
@@ -53,10 +53,10 @@ class MessageBus<T>(
     fun shutdown() {
         logger.warn("shutting down...")
         shutDownSignal = true
-        runAfterDelay(2, TimeUnit.SECONDS) {
+        afterDelay(2, TimeUnit.SECONDS) {
             receivers.shutdown()
             while (!receivers.isTerminated) {
-                Thread.sleep(1000)
+                Thread.sleep(100)
             }
             invalidateSession(sessionHolder)
         }

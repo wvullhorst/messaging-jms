@@ -21,9 +21,11 @@ fun <T> sendTo(channel: Channel,
                sessionProvider: () -> Try<Session>,
                sessionInvalidator: () -> Try<Unit>,
                shutDownSignal: () -> Boolean): Try<Unit> =
-        retryForever(shutDownSignal = shutDownSignal) {
-            invalidateOnFailure("session", sessionProvider, sessionInvalidator) { session ->
-                session.createDestination(channel)
+        retryForever(shutDownSignal) {
+            invalidateOnFailure("session",
+                    sessionProvider,
+                    sessionInvalidator) { session ->
+                createDestination(session, channel)
                         .andThen { destination ->
                             serializer.invoke(session, objectOfT)
                                     .andThen { send(session, destination, it) }

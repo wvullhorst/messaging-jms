@@ -1,7 +1,7 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
-import com.vullhorst.messagebus.jms.execution.runAfterDelay
+import com.vullhorst.messagebus.jms.execution.afterDelay
 import com.vullhorst.messagebus.jms.model.Channel
 import mu.KotlinLogging
 import org.apache.activemq.ActiveMQConnectionFactory
@@ -67,7 +67,7 @@ class DispatcherTest {
             done.complete(msg)
             Try.just(Unit)
         }
-        runAfterDelay(5, TimeUnit.SECONDS) {
+        afterDelay(5, TimeUnit.SECONDS) {
             messageBus.send(senderTopic, "simple message")
             done.get()
             dispatcher.shutdown()
@@ -101,7 +101,7 @@ class DispatcherTest {
             latch.countDown()
             Try.just(Unit)
         }
-        runAfterDelay(5, TimeUnit.SECONDS) {
+        afterDelay(5, TimeUnit.SECONDS) {
             (1..messageCount).forEach {
                 messageBus.send(senderTopic, "simple message $it")
             }
@@ -142,7 +142,7 @@ class DispatcherTest {
             latch.countDown()
             Try.just(Unit)
         }
-        runAfterDelay(2, TimeUnit.SECONDS) {
+        afterDelay(2, TimeUnit.SECONDS) {
             (1..messageCount).forEach {
                 messageBus.send(senderTopic, "${it % 10}")
             }

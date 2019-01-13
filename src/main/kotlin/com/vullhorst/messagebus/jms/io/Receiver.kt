@@ -4,16 +4,15 @@ import arrow.core.Either
 import arrow.core.Try
 import arrow.core.orElse
 import arrow.core.recoverWith
-import com.vullhorst.messagebus.jms.execution.*
-import com.vullhorst.messagebus.jms.io.model.DestinationContext
+import com.vullhorst.messagebus.jms.execution.andThen
+import com.vullhorst.messagebus.jms.execution.closeAfterUsage
+import com.vullhorst.messagebus.jms.execution.loop
+import com.vullhorst.messagebus.jms.execution.loopUntilFails
 import com.vullhorst.messagebus.jms.model.Channel
 import com.vullhorst.messagebus.jms.model.consumerName
 import com.vullhorst.messagebus.jms.model.createDestination
 import mu.KotlinLogging
-import javax.jms.Message
-import javax.jms.MessageConsumer
-import javax.jms.Session
-import javax.jms.Topic
+import javax.jms.*
 
 private val logger = KotlinLogging.logger {}
 
@@ -24,23 +23,23 @@ fun <T> handleIncomingMessages(channel: Channel,
                                sessionInvalidator: () -> Try<Unit>,
                                shutDownSignal: () -> Boolean): Try<Unit> {
     logger.debug("starting receiver for channel $channel -> ${Thread.currentThread()}")
-    return loopUntilShutdown(shutDownSignal) {
-        sessionProvider.invoke().flatMap { session ->
-            session.createDestination(channel)
-                    .andThen { destination ->
-                        handleIncomingMessages(DestinationContext(session, destination, channel),
-                                deserializer,
-                                shutDownSignal,
-                                consumer)
-                                .recoverWith { error ->
-                                    logger.error("error handling message: ${error.message}")
-                                    sessionInvalidator.invoke()
-                                }
-                    }
-        }
+    return loop(shutDownSignal) {
+        sessionProvider.invoke()
+                .andThen { session ->
+                    createDestination(session, channel)
+                            .andThen { destination ->
+                                handleIncomingMessages(DestinationContext(session, destination, channel),
+                                        deserializer,
+                                        shutDownSignal,
+                                        consumer)
+                                        .recoverWith { error ->
+                                            logger.error("error handling message: ${error.message}")
+                                            sessionInvalidator.invoke()
+                                        }
+                            }
+                }
     }
 }
-
 
 private fun <T> handleIncomingMessages(context: DestinationContext,
                                        deserializer: (Message) -> Try<T>,
@@ -49,8 +48,8 @@ private fun <T> handleIncomingMessages(context: DestinationContext,
         closeAfterUsage("consumer",
                 { createConsumer(context) },
                 { Try { it.close() } }) { consumer ->
-            loopUntilFails(shutDownSignal = shutDownSignal) {
-                handleIncomingMessages(consumer, shutDownSignal)
+            loopUntilFails(shutDownSignal) {
+                receiveNextMessage(consumer, shutDownSignal)
                         .andThen { messageOrNot ->
                             messageOrNot.fold(
                                     { consumeMessage(it, deserializer, context.session, body) },
@@ -69,8 +68,8 @@ private fun createConsumer(context: DestinationContext): Try<MessageConsumer> {
     }
 }
 
-private fun handleIncomingMessages(consumer: MessageConsumer,
-                                   shutDownSignal: () -> Boolean): Try<Either<Message, Unit>> {
+private fun receiveNextMessage(consumer: MessageConsumer,
+                               shutDownSignal: () -> Boolean): Try<Either<Message, Unit>> {
     while (true) {
         if (shutDownSignal.invoke()) {
             logger.debug("shutdown signal received, stop reading messages")
@@ -94,3 +93,7 @@ private fun <T> consumeMessage(message: Message,
                         .orElse { Try { session.recover() } }
             }
 }
+
+data class DestinationContext(val session: Session,
+                              val destination: Destination,
+                              val channel: Channel)

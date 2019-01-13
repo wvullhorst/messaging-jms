@@ -1,8 +1,7 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
-import com.sun.jndi.ldap.pool.PooledConnectionFactory
-import com.vullhorst.messagebus.jms.execution.runAfterDelay
+import com.vullhorst.messagebus.jms.execution.afterDelay
 import com.vullhorst.messagebus.jms.model.*
 import mu.KotlinLogging
 import org.apache.activemq.ActiveMQConnectionFactory
@@ -11,7 +10,6 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import javax.sql.PooledConnection
 
 private val logger = KotlinLogging.logger {}
 
@@ -40,7 +38,7 @@ class MessageBusTest {
             Try.just(Unit)
         }
         println("receivers created")
-        runAfterDelay(1, TimeUnit.SECONDS) {
+        afterDelay(1, TimeUnit.SECONDS) {
             for (i in 1..nMessages) {
                 messageBus.send(topic, simpleEvent)
             }
@@ -60,7 +58,7 @@ class MessageBusTest {
             latch.countDown()
             Try.just(Unit)
         }
-        runAfterDelay(1, TimeUnit.SECONDS) {
+        afterDelay(1, TimeUnit.SECONDS) {
             for (i in 1..nMessages) {
                 messageBus.send(queue, simpleEvent)
             }
@@ -88,7 +86,7 @@ class MessageBusTest {
                 Try.just(Unit)
             }
         }
-        runAfterDelay(1, TimeUnit.SECONDS) {
+        afterDelay(1, TimeUnit.SECONDS) {
             messageBus.send(topic, simpleEvent)
             val failedEvent = failure.get()
             val receivedEvent = done.get()

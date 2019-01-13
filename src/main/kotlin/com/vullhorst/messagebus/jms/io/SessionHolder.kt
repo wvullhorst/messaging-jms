@@ -44,7 +44,6 @@ private fun getOrCreateSession(sessionHolder: SessionHolder,
         sessionLock.lock()
         return sessionHolder.sessionContext
                 .map {
-                    logger.debug("using existing session")
                     Try.just(it.session)
                 }
                 .getOrElse {
@@ -76,7 +75,7 @@ private fun buildSessionContext(sessionHolder: SessionHolder,
 private fun startConnection(sessionHolder: SessionHolder,
                             connection: Connection): Try<Connection> {
     return Try {
-        // connection.setExceptionListener { invalidateSession(sessionHolder) }
+        connection.setExceptionListener { invalidateSession(sessionHolder) }
         connection.start()
         connection
     }

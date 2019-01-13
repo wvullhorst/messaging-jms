@@ -18,8 +18,9 @@ class Dispatcher(
         private val messageBuilder: (Session, Message) -> Try<Message>) {
 
     private val receivers = Executors.newSingleThreadExecutor()
-    private var shutDownSignal: Boolean = false
     private val sessionHolder = SessionHolder()
+
+    private var shutDownSignal: Boolean = false
 
     fun startup() {
         logger.info { "startup" }
@@ -50,6 +51,7 @@ class Dispatcher(
         receivers.shutdown()
         while (!receivers.isTerminated) {
         }
+        invalidateSession(sessionHolder)
         logger.warn("shutdown completed")
     }
 }

@@ -8,22 +8,21 @@ import java.util.concurrent.TimeUnit
 
 private val logger = KotlinLogging.logger {}
 
-fun loopUntilShutdown(shutDownSignal: () -> Boolean,
-                      body: () -> Try<Unit>): Try<Unit> {
+fun loop(shutDownSignal: () -> Boolean,
+         body: () -> Try<Unit>): Try<Unit> {
     while (!shutDownSignal.invoke()) {
         body.invoke()
                 .getOrElse {
-                    logger.debug { "loopUntilShutdown: error in invocation: ${it.message}, sleep..." }
+                    logger.debug { "loop: error in invocation: ${it.message}, sleep..." }
                     Thread.sleep(1000)
                 }
-        logger.debug("loopUntilShutdown: loop again")
     }
-    logger.debug("loopUntilShutdown stopped")
+    logger.debug("loop stopped")
     return Try.just(Unit)
 }
 
-fun retryForever(delayInSeconds: Int = 1,
-                 shutDownSignal: () -> Boolean,
+fun retryForever(shutDownSignal: () -> Boolean,
+                 delayInSeconds: Int = 1,
                  body: () -> Try<Unit>): Try<Unit> {
     while (true) {
         if (body.invoke().isSuccess())
@@ -48,7 +47,7 @@ fun loopUntilFails(shutDownSignal: () -> Boolean,
     }
 }
 
-fun runAfterDelay(delay: Long, unit: TimeUnit, body: () -> Unit) {
+fun afterDelay(delay: Long, unit: TimeUnit, body: () -> Unit) {
     unit.sleep(delay)
     return body.invoke()
 }
@@ -69,7 +68,6 @@ fun <T, A> closeAfterUsage(id: String,
                 .andThen { instance ->
                     body.invoke(instance)
                             .andThen { result ->
-                                logger.warn("$id: invocation finished normally, destroy")
                                 destroyer.invoke(instance).map { result }
                             }
                             .recoverWith { error ->
