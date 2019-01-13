@@ -25,7 +25,7 @@ class Dispatcher(
         logger.info { "startup" }
         receivers.execute {
             Thread.currentThread().name = "Dispatcher_rcv"
-            readNextMessage(receiveChannel,
+            handleIncomingMessages(receiveChannel,
                     { msg -> Try { msg } },
                     { send(it) },
                     { getSession(sessionHolder, connectionBuilder) },

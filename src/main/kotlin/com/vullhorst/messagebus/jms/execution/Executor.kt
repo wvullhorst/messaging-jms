@@ -16,7 +16,9 @@ fun loopUntilShutdown(shutDownSignal: () -> Boolean,
                     logger.debug { "loopUntilShutdown: error in invocation: ${it.message}, sleep..." }
                     Thread.sleep(1000)
                 }
+        logger.debug("loopUntilShutdown: loop again")
     }
+    logger.debug("loopUntilShutdown stopped")
     return Try.just(Unit)
 }
 
@@ -31,6 +33,18 @@ fun retryForever(delayInSeconds: Int = 1,
             return Try.just(Unit)
         }
         Thread.sleep(delayInSeconds * 1000L)
+    }
+}
+
+fun loopUntilFails(shutDownSignal: () -> Boolean,
+                   body: () -> Try<Unit>): Try<Unit> {
+    while (true) {
+        if (body.invoke().isFailure())
+            return Try.just(Unit)
+        if (shutDownSignal.invoke()) {
+            logger.info("retryForever done, shutdown in progress")
+            return Try.just(Unit)
+        }
     }
 }
 

@@ -35,6 +35,7 @@ class MessageBusTest {
         val latch = CountDownLatch(nMessages)
         val messageBus = messageBus()
         messageBus.receive(topic) {
+            logger.debug("message received, countdown")
             latch.countDown()
             Try.just(Unit)
         }
