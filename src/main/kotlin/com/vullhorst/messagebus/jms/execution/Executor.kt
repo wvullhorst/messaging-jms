@@ -2,14 +2,11 @@ package com.vullhorst.messagebus.jms.execution
 
 import arrow.core.Try
 import arrow.core.getOrElse
+import arrow.core.recoverWith
 import mu.KotlinLogging
 import java.util.concurrent.TimeUnit
 
 private val logger = KotlinLogging.logger {}
-
-class ExecutorException(message: String) : Exception(message)
-
-val shutdownInProgressTry = Try.raise<Unit>(ExecutorException("shutdown in progress"))
 
 fun loopUntilShutdown(shutDownSignal: () -> Boolean,
                       body: () -> Try<Unit>): Try<Unit> {
@@ -26,14 +23,15 @@ fun loopUntilShutdown(shutDownSignal: () -> Boolean,
 fun retryForever(delayInSeconds: Int = 1,
                  shutDownSignal: () -> Boolean,
                  body: () -> Try<Unit>): Try<Unit> {
-        while (body.invoke().isFailure()) {
-            if(shutDownSignal.invoke())
-                break
-            logger.debug { "retryForever: sleep..." }
-            Thread.sleep(delayInSeconds * 1000L)
+    while (true) {
+        if (body.invoke().isSuccess())
+            return Try.just(Unit)
+        if (shutDownSignal.invoke()) {
+            logger.info("retryForever done, shutdown in progress")
+            return Try.just(Unit)
         }
-    logger.warn("shutdown requested, stopping loop")
-    return shutdownInProgressTry
+        Thread.sleep(delayInSeconds * 1000L)
+    }
 }
 
 fun runAfterDelay(delay: Long, unit: TimeUnit, body: () -> Unit) {
@@ -48,3 +46,35 @@ fun <T, B> Try<T>.combineWith(body: (T) -> Try<B>): Try<Pair<T, B>> {
             { Try.raise(it) },
             { t -> body.invoke(t).map { b -> Pair(t, b) } })
 }
+
+fun <T, A> closeAfterUsage(id: String,
+                           creator: () -> Try<T>,
+                           destroyer: (T) -> Try<Unit>,
+                           body: (T) -> Try<A>): Try<A> =
+        creator.invoke()
+                .andThen { instance ->
+                    body.invoke(instance)
+                            .andThen { result ->
+                                logger.warn("$id: invocation finished normally, destroy")
+                                destroyer.invoke(instance).map { result }
+                            }
+                            .recoverWith { error ->
+                                logger.warn("$id: invocation caused failure: ${error.message}, destroy")
+                                destroyer.invoke(instance)
+                                Try.raise(error)
+                            }
+                }
+
+fun <T, A> invalidateOnFailure(id: String,
+                               creator: () -> Try<T>,
+                               invalidator: () -> Try<Unit>,
+                               body: (T) -> Try<A>): Try<A> =
+        creator.invoke()
+                .andThen { instance ->
+                    body.invoke(instance)
+                            .recoverWith { error ->
+                                logger.warn("$id: invocation caused failure: $error.message, invalidate")
+                                invalidator.invoke()
+                                Try.raise(error)
+                            }
+                }

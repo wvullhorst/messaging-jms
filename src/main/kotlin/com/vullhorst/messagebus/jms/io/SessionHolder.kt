@@ -25,14 +25,14 @@ fun getSession(sessionHolder: SessionHolder,
                connectionBuilder: () -> Try<Connection>): Try<Session> =
         getOrCreateSession(sessionHolder, connectionBuilder)
 
-fun invalidateSession(sessionHolder: SessionHolder) = Try {
+fun invalidateSession(sessionHolder: SessionHolder): Try<Unit> = Try {
     logger.info { "invalidating session cache" }
-    sessionHolder.sessionContext.exists {
+    sessionHolder.sessionContext.map {
         logger.info("closing session and connection")
         it.session.close()
         it.connection.stop()
         it.connection.close()
-        true
+        Try.just(Unit)
     }
     sessionHolder.sessionContext = Option.empty()
 }
@@ -76,7 +76,7 @@ private fun buildSessionContext(sessionHolder: SessionHolder,
 private fun startConnection(sessionHolder: SessionHolder,
                             connection: Connection): Try<Connection> {
     return Try {
-        connection.setExceptionListener { invalidateSession(sessionHolder)  }
+        // connection.setExceptionListener { invalidateSession(sessionHolder) }
         connection.start()
         connection
     }

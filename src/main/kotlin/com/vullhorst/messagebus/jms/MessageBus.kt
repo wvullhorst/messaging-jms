@@ -4,7 +4,6 @@ import arrow.core.Try
 import com.vullhorst.messagebus.jms.io.*
 import com.vullhorst.messagebus.jms.model.Channel
 import mu.KotlinLogging
-import java.util.concurrent.Executors
 import javax.jms.Connection
 import javax.jms.Message
 import javax.jms.Session
@@ -17,17 +16,18 @@ class MessageBus<T>(
         private val serializer: (Session, T) -> Try<Message>,
         private val deserializer: (Message) -> Try<T>) {
 
-    private val receivers = Executors.newCachedThreadPool()
     private val sessionHolder = SessionHolder()
 
     private var shutDownSignal: Boolean = false
 
     fun send(channel: Channel, objectOfT: T): Try<Unit> {
         logger.debug("send $channel")
-        return send(channel,
+        return sendTo(channel,
                 objectOfT,
+                serializer,
                 { getSession(sessionHolder, connectionBuilder) },
-                serializer)
+                { invalidateSession(sessionHolder) },
+                { shutDownSignal })
     }
 
     fun receive(channel: Channel,
@@ -36,7 +36,7 @@ class MessageBus<T>(
         (1..numberOfConsumers).forEach {
             thread {
                 Thread.currentThread().name = "MessageBus_rcv$it"
-                receive(channel,
+                readNextMessage(channel,
                         deserializer,
                         consumer,
                         { getSession(sessionHolder, connectionBuilder) },

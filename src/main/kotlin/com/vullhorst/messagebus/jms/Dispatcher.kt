@@ -25,7 +25,7 @@ class Dispatcher(
         logger.info { "startup" }
         receivers.execute {
             Thread.currentThread().name = "Dispatcher_rcv"
-            receive(receiveChannel,
+            readNextMessage(receiveChannel,
                     { msg -> Try { msg } },
                     { send(it) },
                     { getSession(sessionHolder, connectionBuilder) },
@@ -36,10 +36,12 @@ class Dispatcher(
 
     private fun send(incomingMessage: Message): Try<Unit> {
         logger.info { "send..." }
-        return send(sendChannel,
+        return sendTo(sendChannel,
                 incomingMessage,
+                messageBuilder,
                 { getSession(sessionHolder, connectionBuilder) },
-                messageBuilder)
+                { invalidateSession(sessionHolder) },
+                { shutDownSignal })
     }
 
     fun shutdown() {
@@ -49,6 +51,5 @@ class Dispatcher(
         while (!receivers.isTerminated) {
         }
         logger.warn("shutdown completed")
-
     }
 }

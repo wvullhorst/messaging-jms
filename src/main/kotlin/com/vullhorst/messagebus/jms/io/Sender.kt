@@ -2,32 +2,44 @@ package com.vullhorst.messagebus.jms.io
 
 import arrow.core.Try
 import com.vullhorst.messagebus.jms.execution.andThen
-import com.vullhorst.messagebus.jms.execution.combineWith
-import com.vullhorst.messagebus.jms.io.model.DestinationContext
-import com.vullhorst.messagebus.jms.io.model.buildDestinationContext
+import com.vullhorst.messagebus.jms.execution.closeAfterUsage
+import com.vullhorst.messagebus.jms.execution.invalidateOnFailure
+import com.vullhorst.messagebus.jms.execution.retryForever
 import com.vullhorst.messagebus.jms.model.Channel
+import com.vullhorst.messagebus.jms.model.createDestination
 import mu.KotlinLogging
-import javax.jms.Connection
+import javax.jms.Destination
 import javax.jms.Message
 import javax.jms.MessageProducer
 import javax.jms.Session
 
 private val logger = KotlinLogging.logger {}
 
-fun <T> send(channel: Channel,
-             objectOfT: T,
-             sessionProvider: () -> Try<Session>,
-             serializer: (Session, T) -> Try<Message>): Try<Unit> {
-    logger.debug("send $channel")
-    return buildDestinationContext(channel, sessionProvider)
-            .combineWith { serializer.invoke(it.session, objectOfT) }
-            .andThen { send(it.first, it.second) }
-}
+fun <T> sendTo(channel: Channel,
+               objectOfT: T,
+               serializer: (Session, T) -> Try<Message>,
+               sessionProvider: () -> Try<Session>,
+               sessionInvalidator: () -> Try<Unit>,
+               shutDownSignal: () -> Boolean): Try<Unit> =
+        retryForever(shutDownSignal = shutDownSignal) {
+            invalidateOnFailure("session", sessionProvider, sessionInvalidator) { session ->
+                session.createDestination(channel)
+                        .andThen { destination ->
+                            serializer.invoke(session, objectOfT)
+                                    .andThen { send(session, destination, it) }
+                        }
+            }
+        }
 
-private fun send(context: DestinationContext,
+
+private fun send(session: Session,
+                 destination: Destination,
                  message: Message): Try<Unit> =
-        Try { context.session.createProducer(context.destination) }
-                .andThen { sendMessage(it, message) }
+        closeAfterUsage("producer",
+                { Try { session.createProducer(destination) } },
+                { Try { it.close() } }) {
+            sendMessage(it, message)
+        }
 
 private fun sendMessage(producer: MessageProducer,
                         message: Message) = Try {

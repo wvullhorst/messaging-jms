@@ -65,7 +65,6 @@ class MessageBusTest {
             }
             latch.await(20, TimeUnit.SECONDS)
             messageBus.shutdown()
-            Thread.sleep(50000)
             logger.info("done")
         }
     }
