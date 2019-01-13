@@ -1,5 +1,6 @@
 package com.vullhorst.messagebus.jms.io
 
+import arrow.core.Either
 import arrow.core.Try
 import arrow.core.recoverWith
 import com.vullhorst.messagebus.jms.execution.andThen
@@ -11,7 +12,10 @@ import com.vullhorst.messagebus.jms.io.model.buildDestinationContext
 import com.vullhorst.messagebus.jms.model.Channel
 import com.vullhorst.messagebus.jms.model.consumerName
 import mu.KotlinLogging
-import javax.jms.*
+import javax.jms.Message
+import javax.jms.MessageConsumer
+import javax.jms.Session
+import javax.jms.Topic
 
 private val logger = KotlinLogging.logger {}
 
@@ -20,19 +24,17 @@ fun <T> receive(channel: Channel,
                 consumer: (T) -> Try<Unit>,
                 sessionProvider: () -> Try<Session>,
                 sessionInvalidator: () -> Try<Unit>,
-                executor: (() -> Unit) -> Unit,
-                shutDownSignal: () -> Boolean) =
-        executor.invoke {
-            logger.debug("starting receiver for channel $channel -> ${Thread.currentThread()}")
-            loopUntilShutdown(shutDownSignal) {
-                sessionProvider.invoke()
-                        .andThen { buildDestinationContext(channel, sessionProvider) }
-                        .andThen { context ->
-                            handleIncomingMessages(context, deserializer, shutDownSignal, consumer)
-                                    .recoverWith { sessionInvalidator.invoke() }
-                        }
-            }
-        }
+                shutDownSignal: () -> Boolean): Try<Unit> {
+    logger.debug("starting receiver for channel $channel -> ${Thread.currentThread()}")
+    return loopUntilShutdown(shutDownSignal) {
+        sessionProvider.invoke()
+                .andThen { buildDestinationContext(channel, sessionProvider) }
+                .andThen { context ->
+                    handleIncomingMessages(context, deserializer, shutDownSignal, consumer)
+                            .andThen { sessionInvalidator.invoke() }
+                }
+    }
+}
 
 private fun <T> handleIncomingMessages(context: DestinationContext,
                                        deserializer: (Message) -> Try<T>,
@@ -42,12 +44,18 @@ private fun <T> handleIncomingMessages(context: DestinationContext,
             createConsumer(context)
                     .andThen { consumer ->
                         loopUntilShutdown(shutDownSignal) {
-                            receiveMessage(consumer, shutDownSignal)
-                                    .combineWith { deserializer.invoke(it) }
-                                    .andThen { callConsumerAndHandleResult(body, it, context) }
+                            receiveAndConsume(consumer, shutDownSignal)
                         }
+                                .andThen { closeConsumer(consumer) }
                     }
         }
+
+private fun closeConsumer(consumer: MessageConsumer): Try<Unit> {
+    return Try {
+        logger.info("closing consumer");
+        consumer.close()
+    }
+}
 
 private fun createConsumer(context: DestinationContext): Try<MessageConsumer> {
     return Try {
@@ -59,17 +67,16 @@ private fun createConsumer(context: DestinationContext): Try<MessageConsumer> {
     }
 }
 
-private fun receiveMessage(consumer: MessageConsumer,
-                           shutDownSignal: () -> Boolean): Try<Message> {
-    return Try {
-        var message: Message? = null
-        while (!shutDownSignal.invoke() && message == null) {
-            message = consumer.receive(1000)
-        }
-        logger.info("-> $message")
-        message!!
+private fun receiveAndConsume(consumer: MessageConsumer,
+                           shutDownSignal: () -> Boolean): Try<Unit> {
+    while (true) {
+        val message = receive(consumer)
+        if (message != null) return Either.left(Try.just(message))
+        if (shutDownSignal.invoke()) return Either.right(Try.just(Unit))
     }
 }
+
+private fun receive(consumer: MessageConsumer) = consumer.receive(1000)
 
 private fun <T> callConsumerAndHandleResult(body: (T) -> Try<Unit>, messageTPair: Pair<Message, T>, context: DestinationContext): Try<Unit> {
     return body.invoke(messageTPair.second)

@@ -1,8 +1,11 @@
 package com.vullhorst.messagebus.jms.execution
 
 import arrow.core.Try
-import java.util.concurrent.Executor
+import arrow.core.getOrElse
+import mu.KotlinLogging
 import java.util.concurrent.TimeUnit
+
+private val logger = KotlinLogging.logger {}
 
 class ExecutorException(message: String) : Exception(message)
 
@@ -10,16 +13,26 @@ val shutdownInProgressTry = Try.raise<Unit>(ExecutorException("shutdown in progr
 
 fun loopUntilShutdown(shutDownSignal: () -> Boolean,
                       body: () -> Try<Unit>): Try<Unit> {
-    while (!shutDownSignal.invoke()) body.invoke()
-    return shutdownInProgressTry
+    while (!shutDownSignal.invoke()) {
+        body.invoke()
+                .getOrElse {
+                    logger.debug { "loopUntilShutdown: error in invocation: ${it.message}, sleep..." }
+                    Thread.sleep(1000)
+                }
+    }
+    return Try.just(Unit)
 }
 
 fun retryForever(delayInSeconds: Int = 1,
                  shutDownSignal: () -> Boolean,
                  body: () -> Try<Unit>): Try<Unit> {
-    while (!shutDownSignal.invoke() && !body.invoke().isFailure()) {
-        Thread.sleep(delayInSeconds * 1000L)
-    }
+        while (body.invoke().isFailure()) {
+            if(shutDownSignal.invoke())
+                break
+            logger.debug { "retryForever: sleep..." }
+            Thread.sleep(delayInSeconds * 1000L)
+        }
+    logger.warn("shutdown requested, stopping loop")
     return shutdownInProgressTry
 }
 
@@ -35,13 +48,3 @@ fun <T, B> Try<T>.combineWith(body: (T) -> Try<B>): Try<Pair<T, B>> {
             { Try.raise(it) },
             { t -> body.invoke(t).map { b -> Pair(t, b) } })
 }
-
-fun Executor.execute(numberOfThreads: Int,
-                     threadNameBuilder: (Int) -> String,
-                     body: () -> Unit) =
-        (1..numberOfThreads).forEach { consumerId ->
-            this.execute {
-                Thread.currentThread().name = threadNameBuilder.invoke(consumerId)
-                body.invoke()
-            }
-        }

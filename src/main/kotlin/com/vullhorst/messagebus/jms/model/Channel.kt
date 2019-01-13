@@ -2,6 +2,7 @@ package com.vullhorst.messagebus.jms.model
 
 import arrow.core.Try
 import javax.jms.Destination
+import javax.jms.Queue
 import javax.jms.Session
 
 sealed class Channel {

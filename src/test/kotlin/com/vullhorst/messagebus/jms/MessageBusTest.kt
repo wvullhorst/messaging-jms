@@ -1,6 +1,7 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
+import com.sun.jndi.ldap.pool.PooledConnectionFactory
 import com.vullhorst.messagebus.jms.execution.runAfterDelay
 import com.vullhorst.messagebus.jms.model.*
 import mu.KotlinLogging
@@ -10,6 +11,7 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import javax.sql.PooledConnection
 
 private val logger = KotlinLogging.logger {}
 
@@ -36,6 +38,7 @@ class MessageBusTest {
             latch.countDown()
             Try.just(Unit)
         }
+        println("receivers created")
         runAfterDelay(1, TimeUnit.SECONDS) {
             for (i in 1..nMessages) {
                 messageBus.send(topic, simpleEvent)
@@ -62,6 +65,7 @@ class MessageBusTest {
             }
             latch.await(20, TimeUnit.SECONDS)
             messageBus.shutdown()
+            Thread.sleep(50000)
             logger.info("done")
         }
     }

@@ -1,7 +1,6 @@
 package com.vullhorst.messagebus.jms
 
 import arrow.core.Try
-import com.vullhorst.messagebus.jms.execution.execute
 import com.vullhorst.messagebus.jms.io.*
 import com.vullhorst.messagebus.jms.model.Channel
 import mu.KotlinLogging
@@ -24,13 +23,15 @@ class Dispatcher(
 
     fun startup() {
         logger.info { "startup" }
-        receive(receiveChannel,
-                { msg -> Try { msg } },
-                { send(it) },
-                { getSession(sessionHolder, connectionBuilder) },
-                { invalidateSession(sessionHolder) },
-                { receivers.execute(1, { id -> "Dispatcher_rcv$id" }, it) },
-                { shutDownSignal })
+        receivers.execute {
+            Thread.currentThread().name = "Dispatcher_rcv"
+            receive(receiveChannel,
+                    { msg -> Try { msg } },
+                    { send(it) },
+                    { getSession(sessionHolder, connectionBuilder) },
+                    { invalidateSession(sessionHolder) },
+                    { shutDownSignal })
+        }
     }
 
     private fun send(incomingMessage: Message): Try<Unit> {
